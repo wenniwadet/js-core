@@ -1,7 +1,6 @@
-const container = document.querySelector(".container");
-const searchInput = container.querySelector(".search-input");
-const repoList = container.querySelector(".repo-list");
-let dropList = document.querySelector(".drop-list");
+const searchInput = document.querySelector(".search__input");
+const dropList = document.querySelector(".drop-list");
+const repoList = document.querySelector(".repo-list");
 
 function debounce(fn, delay) {
   let timerId;
@@ -13,12 +12,6 @@ function debounce(fn, delay) {
   };
 }
 
-function getValidRequest() {
-  const arr = searchInput.value.split("");
-  const result = arr.filter((char) => char !== " ");
-  return result.join("");
-}
-
 function createElement(tagName, className, textContent) {
   const element = document.createElement(tagName);
   element.classList.add(className);
@@ -28,74 +21,91 @@ function createElement(tagName, className, textContent) {
   return element;
 }
 
-const debouncedSearchRepo = debounce(searchRepo, 500);
+async function searchRepo(value) {
+  const response = await fetch(
+    `https://api.github.com/search/repositories?q=${value}&per_page=5`
+  );
+  const { items } = await response.json();
+  return items;
+}
 
-searchInput.addEventListener("keyup", () => {
-  const validRequest = getValidRequest();
-
-  if (validRequest.length === 0 && dropList) {
-    setTimeout(() => {
-      dropList.remove();
-    }, 1000);
+function search() {
+  dropList.style.display = "";
+  if (dropList.textContent !== "") {
+    dropList.textContent = "";
   }
-  if (validRequest.length !== 0) {
-    debouncedSearchRepo(validRequest);
+  if (searchInput.value.length !== 0) {
+    searchRepo(searchInput.value)
+      .then((repositories) => {
+        createItemsDropList(repositories);
+        dropList.style.display = "block";
+      })
+      .catch((error) => {
+        console.log(error);
+        alert("Произошла ошибка, повторите запрос позднее");
+      });
+  }
+}
+
+function createItemsDropList(repositories) {
+  dropList.style.display = "block";
+  repositories.forEach((repository) => {
+    const dropItem = createElement("li", "drop-list__item", repository.name);
+    dropItem.setAttribute("data-owner", repository.owner.login);
+    dropItem.setAttribute("data-stars", repository.stargazers_count);
+    dropList.append(dropItem);
+  });
+}
+
+function createItemsRepoList(event) {
+  const element = event.target;
+  const repoList = document.querySelector(".repo-list");
+  const repoItem = createElement("li", "repo-list__item");
+  const repoItemDescription = createElement("div", "repo-list__description");
+  const repoItemButton = createElement("button", "repo-list__button");
+  const repoItemName = createElement(
+    "span",
+    "repo-list__name",
+    `Name: ${element.textContent}`
+  );
+  const repoItemOwner = createElement(
+    "span",
+    "repo-list__owner",
+    `Owner: ${element.dataset.owner}`
+  );
+  const repoItemStars = createElement(
+    "span",
+    "repo-item__stars",
+    `Stars: ${element.dataset.stars}`
+  );
+
+  repoItemDescription.append(repoItemName);
+  repoItemDescription.append(repoItemOwner);
+  repoItemDescription.append(repoItemStars);
+
+  repoItem.append(repoItemDescription);
+  repoItem.append(repoItemButton);
+
+  repoList.append(repoItem);
+}
+
+searchInput.addEventListener("input", debounce(search, 500));
+
+dropList.addEventListener("click", (event) => {
+  searchInput.value = "";
+  dropList.textContent = "";
+  dropList.style.display = "";
+
+  if (repoList.children.length <= 2) {
+    createItemsRepoList(event);
+  } else {
+    alert("Вы добавили максимальное количество репозиториев");
   }
 });
 
 repoList.addEventListener("click", (event) => {
-  const element = event.target;
-
-  if (element.tagName === "BUTTON") {
-    const parentEl = element.parentElement;
+  if (event.target.tagName === "BUTTON") {
+    const parentEl = event.target.closest(".repo-list__item");
     parentEl.remove();
   }
 });
-
-async function searchRepo(request) {
-  try {
-    if (searchInput.value.length === 0) {
-      return;
-    }
-
-    if (dropList) {
-      dropList.remove();
-    }
-
-    const response = await fetch(`https://api.github.com/search/repositories?q=${request}&per_page=5`);
-    const repositories = await response.json();
-
-    dropList = createElement("ul", "drop-list");
-
-    repositories.items.forEach((repo) => {
-      const dropItem = createElement("li", "drop-item", repo.name);
-      dropItem.setAttribute("data-owner", repo.owner.login);
-      dropItem.setAttribute("data-stars", repo.stargazers_count);
-      dropList.append(dropItem);
-    });
-
-    dropList.addEventListener("click", (event) => {
-      const element = event.target;
-      const repoItem = createElement("li", "repo-item");
-      const repoItemContent = createElement("div", "repo-item__content");
-      const repoItemButton = createElement("button", "repo-item__button");
-      repoItemContent.insertAdjacentHTML(
-        "afterbegin",
-        `
-        <span class="repo-item__name">Name: ${element.textContent}</span>
-        <span class="repo-item__owner">Owner: ${element.dataset.owner}</span>
-        <span class="repo-item__stars">Stars: ${element.dataset.stars}</span>
-        `
-      );
-      repoItem.append(repoItemContent);
-      repoItem.append(repoItemButton);
-      repoList.append(repoItem);
-      searchInput.value = "";
-      dropList.remove();
-    });
-
-    searchInput.after(dropList);
-  } catch (error) {
-    alert(error);
-  }
-}
